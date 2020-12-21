@@ -1,3 +1,4 @@
+# @Yi: almost the same as the mbpo, only add codes that relative to the "disterministic" and "separate_mean_var"
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
@@ -402,7 +403,7 @@ class BNN:
         with self.sess.as_default():
             self.scaler.fit(inputs)
 
-        idxs = np.random.randint(inputs.shape[0], size=[self.num_nets, inputs.shape[0]])
+        idxs = np.random.randint(inputs.shape[0], size=[self.num_nets, inputs.shape[0]]) # random dataset for each ensemble
         if hide_progress:
             progress = Silent()
         else:

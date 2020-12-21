@@ -16,8 +16,9 @@ from tensorflow.python.training import training_util
 from softlearning.algorithms.rl_algorithm import RLAlgorithm
 from softlearning.replay_pools.simple_replay_pool import SimpleReplayPool
 
-from mopo.models.constructor import construct_model, format_samples_for_training
-from mopo.models.fake_env import FakeEnv
+from mopo.models.constructor import construct_model, format_samples_for_training, format_samples_for_ssm
+from mopo.models.ssm import SSM
+from mopo.models.fake_env import FakeEnv, FakeEnv_SSM
 from mopo.utils.writer import Writer
 from mopo.utils.visualization import visualize_policy
 from mopo.utils.logging import Progress
@@ -108,6 +109,10 @@ class MOPO(RLAlgorithm):
 
         super(MOPO, self).__init__(**kwargs)
 
+        import wandb
+        wandb.init(project='test_triton')
+        wandb.config.name = "MOPO"
+
         obs_dim = np.prod(training_environment.active_observation_shape)
         act_dim = np.prod(training_environment.action_space.shape)
         self._model_type = model_type
@@ -116,8 +121,20 @@ class MOPO(RLAlgorithm):
                                       num_networks=num_networks, num_elites=num_elites,
                                       model_type=model_type, separate_mean_var=separate_mean_var,
                                       name=model_name, load_dir=model_load_dir, deterministic=deterministic)
+
+        # TODO: contruct the ssm model, change this to model.build
+
+        self._ssm = SSM(lr = 0.0003,
+                        obs_dim=obs_dim, act_dim=act_dim, rew_dim=1, hidden_dim=hidden_dim,
+                        early_stop_patience=10, name="SSM")
+        self._ssm.build()
+
         self._static_fns = static_fns
-        self.fake_env = FakeEnv(self._model, self._static_fns, penalty_coeff=penalty_coeff,
+
+        # TODO: re define the fake env
+        # self.fake_env = FakeEnv(self._model, self._static_fns, penalty_coeff=penalty_coeff,
+        #                         penalty_learned_var=penalty_learned_var)
+        self.fake_env = FakeEnv_SSM(self._model, self._ssm, self._static_fns, penalty_coeff=penalty_coeff,
                                 penalty_learned_var=penalty_learned_var)
 
         self._rollout_schedule = [20, 100, rollout_length, rollout_length]
@@ -206,7 +223,7 @@ class MOPO(RLAlgorithm):
         policy = self._policy
         pool = self._pool
         model_metrics = {}
-
+        ssm_metrics = {}
         if not self._training_started:
             self._init_training()
 
@@ -217,6 +234,21 @@ class MOPO(RLAlgorithm):
         gt.set_def_unique(False)
 
         self._training_before_hook()
+
+        # @Yi: Different between MOPO and MBPO. Here, the dynamic model is trained first and during training the agent, the dynamic model is not trained
+        # while in MBPO, the model is trained continuously when collectting fresh data
+
+        #### SSM training
+        print('[ SSM ] Training model at epoch {} | freq {} | timestep {} (total: {})'.format(
+            self._epoch, self._model_train_freq, self._timestep, self._total_timestep))
+
+        # max_epochs = 1 if self._ssm.model_loaded else None  # TODO: define _ssm.model_loaded
+        max_epochs = None
+        ssm_train_metrics = self._train_ssm(batch_size=256, max_epochs=max_epochs, holdout_ratio=0.2,
+                                            max_t=self._max_model_t)  # TODO: define _train_ssm, what is _max_model_t
+        ssm_metrics.update(ssm_train_metrics)
+        # self._log_model()
+        gt.stamp('epoch_train_ssm')
 
         #### model training
         print('[ MOPO ] log_dir: {} | ratio: {}'.format(self._log_dir, self._real_ratio))
@@ -231,6 +263,7 @@ class MOPO(RLAlgorithm):
         gt.stamp('epoch_train_model')
         #### 
 
+        # train _n_ecochs(1000) epoch, and in each epoch, train _epoch_length(1000) sac, and every _model_train_freq do rollout
         for self._epoch in gt.timed_for(range(self._epoch, self._n_epochs)):
 
             self._epoch_before_hook()
@@ -248,9 +281,13 @@ class MOPO(RLAlgorithm):
                 self._timestep_before_hook()
                 gt.stamp('timestep_before_hook')
 
+                # @Yi: _rollout_model()
                 ## model rollouts
                 if timestep % self._model_train_freq == 0 and self._real_ratio < 1.0:
                     self._training_progress.pause()
+
+                    # @Yi: here, MBPO has a _train(), but MOPO doesn't: MBPO trains iteratively while MOPO first train the dynamic model, then train the policy
+
                     self._set_rollout_length()
                     self._reallocate_model_pool()
                     model_rollout_metrics = self._rollout_model(rollout_batch_size=self._rollout_batch_size, deterministic=self._deterministic)
@@ -261,7 +298,7 @@ class MOPO(RLAlgorithm):
 
                 ## train actor and critic
                 if self.ready_to_train:
-                    self._do_training_repeats(timestep=timestep)
+                    self._do_training_repeats(timestep=timestep) # @Yi, this fn is from softlearning to train the agent
                 gt.stamp('train')
 
                 self._timestep_after_hook()
@@ -331,7 +368,7 @@ class MOPO(RLAlgorithm):
 
         self._training_progress.close()
 
-        yield {'done': True, **diagnostics}
+        yield {'done': True, **diagnostics} # @YI: use generator is to print out logging. for i in train(): # print diagnostics
 
     def train(self, *args, **kwargs):
         return self._train(*args, **kwargs)
@@ -395,6 +432,14 @@ class MOPO(RLAlgorithm):
             assert self._model_pool.size == new_pool.size
             self._model_pool = new_pool
 
+    # TODO: fill the function
+    def _train_ssm(self, **kwargs):
+        env_samples = self._pool.return_all_samples()
+        train_inputs = format_samples_for_ssm(env_samples)
+        ssm_metrics = self._ssm.train(train_inputs, **kwargs) # TODO: def _ssm.train
+        return ssm_metrics
+
+
     def _train_model(self, **kwargs):
         if self._model_type == 'identity':
             print('[ MOPO ] Identity model, skipping model')
@@ -402,10 +447,12 @@ class MOPO(RLAlgorithm):
         else:
             env_samples = self._pool.return_all_samples()
             train_inputs, train_outputs = format_samples_for_training(env_samples)
+            print("----------------------------> when training the dynamic model, the shape of the input is ", train_inputs.shape, train_outputs.shape)
             model_metrics = self._model.train(train_inputs, train_outputs, **kwargs)
         return model_metrics
 
     def _rollout_model(self, rollout_batch_size, **kwargs):
+        """ rollout model using fake_env and add the samples into _model_pool"""
         print('[ Model Rollout ] Starting | Epoch: {} | Rollout length: {} | Batch size: {} | Type: {}'.format(
             self._epoch, self._rollout_length, rollout_batch_size, self._model_type
         ))
@@ -425,6 +472,7 @@ class MOPO(RLAlgorithm):
                 term = (np.ones((len(obs), 1)) * self._identity_terminal).astype(np.bool)
                 info = {}
             else:
+                # @Yi: sample data from fake_env (learned dynamic model)
                 next_obs, rew, term, info = self.fake_env.step(obs, act, **kwargs)
             steps_added.append(len(obs))
 
