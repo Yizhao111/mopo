@@ -403,7 +403,10 @@ class BNN:
         with self.sess.as_default():
             self.scaler.fit(inputs)
 
+        # TODO: change this idxs
         idxs = np.random.randint(inputs.shape[0], size=[self.num_nets, inputs.shape[0]]) # random dataset for each ensemble
+        # idxs = np.arange(inputs.shape[0])[None]
+
         if hide_progress:
             progress = Silent()
         else:
@@ -419,6 +422,7 @@ class BNN:
 
         t0 = time.time()
         grad_updates = 0
+        # epoch_iter = range(1)
         for epoch in epoch_iter:
             for batch_num in range(int(np.ceil(idxs.shape[-1] / batch_size))):
                 batch_idxs = idxs[:, batch_num * batch_size:(batch_num + 1) * batch_size]

@@ -58,7 +58,8 @@ def format_samples_for_ssm(samples):
     obs = samples['observations']
     act = samples['actions']
     next_obs = samples['next_observations']
-    return np.concatenate((obs, act, next_obs), axis=-1)
+    inputs = np.concatenate((obs, act, next_obs), axis=-1)
+    return inputs, inputs
 
 def reset_model(model):
     model_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=model.name)

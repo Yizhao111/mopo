@@ -41,6 +41,11 @@ class ExperimentRunner(tune.Trainable):
     def _build(self):
         variant = copy.deepcopy(self._variant)
 
+        # Init wandb to record
+        import wandb
+        wandb.init(project="mopo")
+        wandb.config.update(variant)
+
         environment_params = variant['environment_params']
         training_environment = self.training_environment = (
             get_environment_from_params(environment_params['training']))
@@ -81,6 +86,7 @@ class ExperimentRunner(tune.Trainable):
         self._built = True
 
     def _train(self):
+        # @Yi: entry the code from Here.
         if not self._built:
             self._build()
 
@@ -228,7 +234,6 @@ def main(argv=None):
     instructions.
     """
     # __package__ should be `development.main`
-
     run_example_local(__package__, argv)
 
 

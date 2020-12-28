@@ -18,6 +18,7 @@ from softlearning.replay_pools.simple_replay_pool import SimpleReplayPool
 
 from mopo.models.constructor import construct_model, format_samples_for_training, format_samples_for_ssm
 from mopo.models.ssm import SSM
+from mopo.models.ae import AE
 from mopo.models.fake_env import FakeEnv, FakeEnv_SSM
 from mopo.utils.writer import Writer
 from mopo.utils.visualization import visualize_policy
@@ -25,6 +26,7 @@ from mopo.utils.logging import Progress
 import mopo.utils.filesystem as filesystem
 import mopo.off_policy.loader as loader
 
+import wandb
 
 def td_target(reward, discount, next_value):
     return reward + discount * next_value
@@ -109,10 +111,6 @@ class MOPO(RLAlgorithm):
 
         super(MOPO, self).__init__(**kwargs)
 
-        import wandb
-        wandb.init(project='test_triton')
-        wandb.config.name = "MOPO"
-
         obs_dim = np.prod(training_environment.active_observation_shape)
         act_dim = np.prod(training_environment.action_space.shape)
         self._model_type = model_type
@@ -124,7 +122,7 @@ class MOPO(RLAlgorithm):
 
         # TODO: contruct the ssm model, change this to model.build
 
-        self._ssm = SSM(lr = 0.0003,
+        self._ssm = AE(lr = 0.0003,
                         obs_dim=obs_dim, act_dim=act_dim, rew_dim=1, hidden_dim=hidden_dim,
                         early_stop_patience=10, name="SSM")
         self._ssm.build()
@@ -132,10 +130,10 @@ class MOPO(RLAlgorithm):
         self._static_fns = static_fns
 
         # TODO: re define the fake env
-        # self.fake_env = FakeEnv(self._model, self._static_fns, penalty_coeff=penalty_coeff,
-        #                         penalty_learned_var=penalty_learned_var)
-        self.fake_env = FakeEnv_SSM(self._model, self._ssm, self._static_fns, penalty_coeff=penalty_coeff,
+        self.fake_env = FakeEnv(self._model, self._static_fns, penalty_coeff=penalty_coeff,
                                 penalty_learned_var=penalty_learned_var)
+        # self.fake_env = FakeEnv_SSM(self._model, self._ssm, self._static_fns, penalty_coeff=penalty_coeff,
+        #                         penalty_learned_var=penalty_learned_var)
 
         self._rollout_schedule = [20, 100, rollout_length, rollout_length]
         self._max_model_t = max_model_t
@@ -153,6 +151,7 @@ class MOPO(RLAlgorithm):
 
         self._training_environment = training_environment
         self._evaluation_environment = evaluation_environment
+
         self._policy = policy
 
         self._Qs = Qs
@@ -193,7 +192,7 @@ class MOPO(RLAlgorithm):
         #### load replay pool data
         self._pool_load_path = pool_load_path
         self._pool_load_max_size = pool_load_max_size
-
+        # get data from d4rl dataset
         loader.restore_pool(self._pool, self._pool_load_path, self._pool_load_max_size, save_path=self._log_dir)
         self._init_pool_size = self._pool.size
         print('[ MOPO ] Starting with pool size: {}'.format(self._init_pool_size))
@@ -352,7 +351,7 @@ class MOPO(RLAlgorithm):
                 ('timesteps_total', self._total_timestep),
                 ('train-steps', self._num_train_steps),
             )))
-
+            wandb.log(diagnostics)
             if self._eval_render_mode is not None and hasattr(
                     evaluation_environment, 'render_rollouts'):
                 training_environment.render_rollouts(evaluation_paths)
@@ -435,8 +434,8 @@ class MOPO(RLAlgorithm):
     # TODO: fill the function
     def _train_ssm(self, **kwargs):
         env_samples = self._pool.return_all_samples()
-        train_inputs = format_samples_for_ssm(env_samples)
-        ssm_metrics = self._ssm.train(train_inputs, **kwargs) # TODO: def _ssm.train
+        train_inputs, train_outputs = format_samples_for_ssm(env_samples)
+        ssm_metrics = self._ssm.train(train_inputs, train_outputs, **kwargs) # TODO: def _ssm.train
         return ssm_metrics
 
 
@@ -447,7 +446,6 @@ class MOPO(RLAlgorithm):
         else:
             env_samples = self._pool.return_all_samples()
             train_inputs, train_outputs = format_samples_for_training(env_samples)
-            print("----------------------------> when training the dynamic model, the shape of the input is ", train_inputs.shape, train_outputs.shape)
             model_metrics = self._model.train(train_inputs, train_outputs, **kwargs)
         return model_metrics
 

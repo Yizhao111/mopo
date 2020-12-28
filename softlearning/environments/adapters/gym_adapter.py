@@ -77,7 +77,6 @@ class GymAdapter(SoftlearningEnv):
             # therefore the environment is not Markovian (terminal condition
             # depends on time rather than state).
             env = env.env
-
         if normalize:
             env = NormalizeActionWrapper(env)
 

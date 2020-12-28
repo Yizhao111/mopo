@@ -86,33 +86,36 @@ class FakeEnv_SSM:
 
         # @Yi, maybe the main modification?c -- add the constraints of the ood
         if self.penalty_coeff != 0:
-            ssm_inputs = np.concatenate((inputs, next_obs), axis=-1)
-            penalty1 = self.ssm_model.predict(ssm_inputs)
-            assert penalty1.shape == rewards.shape
-            # unpenalized_rewards = rewards
-            # penalized_rewards = rewards - self.penalty_coeff * penalty1
-
-        if self.penalty_coeff != 0:
-            if not self.penalty_learned_var:
-                ensemble_means_obs = ensemble_model_means[:, :, 1:]
-                mean_obs_means = np.mean(ensemble_means_obs, axis=0)  # average predictions over models
-                diffs = ensemble_means_obs - mean_obs_means
-                normalize_diffs = False
-                if normalize_diffs:
-                    obs_dim = next_obs.shape[1]
-                    obs_sigma = self.model.scaler.cached_sigma[0, :obs_dim]
-                    diffs = diffs / obs_sigma
-                dists = np.linalg.norm(diffs, axis=2)  # distance in obs space
-                penalty = np.max(dists, axis=0)  # max distances over models
-            else:
-                penalty = np.amax(np.linalg.norm(ensemble_model_stds, axis=2), axis=0)
-
-            penalty = np.expand_dims(penalty, 1)
-            print('Compare two penalty: energy-based: {}, uncertainty: {}'.format(penalty1, penalty))
-            assert penalty.shape == rewards.shape
+            ssm_inputs = np.concatenate((inputs, next_obs), axis=-1) # (obs, act, next_obs)
+            penalty = self.ssm_model.predict(ssm_inputs)
+            assert penalty.shape == rewards.shape, "rewards have shape {}, but penalty has shape {}".format(rewards.shape, penalty.shape)
             unpenalized_rewards = rewards
+            # print(penalty)
             penalized_rewards = rewards - self.penalty_coeff * penalty
+
+        # if self.penalty_coeff != 0:
+        #     if not self.penalty_learned_var:
+        #         ensemble_means_obs = ensemble_model_means[:, :, 1:]
+        #         mean_obs_means = np.mean(ensemble_means_obs, axis=0)  # average predictions over models
+        #         diffs = ensemble_means_obs - mean_obs_means
+        #         normalize_diffs = False
+        #         if normalize_diffs:
+        #             obs_dim = next_obs.shape[1]
+        #             obs_sigma = self.model.scaler.cached_sigma[0, :obs_dim]
+        #             diffs = diffs / obs_sigma
+        #         dists = np.linalg.norm(diffs, axis=2)  # distance in obs space
+        #         penalty = np.max(dists, axis=0)  # max distances over models
+        #     else:
+        #         penalty = np.amax(np.linalg.norm(ensemble_model_stds, axis=2), axis=0)
+        #
+        #     penalty = np.expand_dims(penalty, 1)
+        #     print('Compare two penalty: energy-based: {}, uncertainty: {}'.format(penalty1, penalty))
+        #     assert penalty.shape == rewards.shape
+        #     unpenalized_rewards = rewards
+        #     penalized_rewards = rewards - self.penalty_coeff * penalty
+
         else:
+            print("-----didn't use the penalty-----")
             penalty = None
             unpenalized_rewards = rewards
             penalized_rewards = rewards
@@ -254,7 +257,7 @@ class FakeEnv:
                 penalty = np.amax(np.linalg.norm(ensemble_model_stds, axis=2), axis=0)
 
             penalty = np.expand_dims(penalty, 1)
-            assert penalty.shape == rewards.shape
+            assert penalty.shape == rewards.shape, "rewards have shape {}, but penalty has shape {}".format(rewards.shape, penalty.shape)
             unpenalized_rewards = rewards
             penalized_rewards = rewards - self.penalty_coeff * penalty
         else:

@@ -68,6 +68,7 @@ def run_example_dry_cmd(example_module_name, example_argv):
 @click.argument('example_argv', nargs=-1, type=click.UNPROCESSED)
 def run_example_local_cmd(example_module_name, example_argv):
     """Run example locally, potentially parallelizing across cpus/gpus."""
+    # @Yi: when insert mopo run_local, this will be called.
     return run_example_local(example_module_name, example_argv)
 
 
