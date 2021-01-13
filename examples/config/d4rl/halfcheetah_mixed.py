@@ -10,5 +10,6 @@ params['kwargs'].update({
     'pool_load_path': 'd4rl/halfcheetah-medium-replay-v0',
     'pool_load_max_size': 101000,
     'rollout_length': 5,
-    'penalty_coeff': 1.0
+    'penalty_coeff': 10.0
+
 })

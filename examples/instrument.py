@@ -210,6 +210,7 @@ def run_example_local(example_module_name, example_argv, local_mode=False):
     example_args = example_module.get_parser().parse_args(example_argv)
     variant_spec = example_module.get_variant_spec(example_args)
     trainable_class = example_module.get_trainable_class(example_args) # get the example.development.main.ExperimentsRunner, where the MOPO.train is called
+    print('------> the variant_spec when runing {} is {}'.format(example_module, variant_spec))
 
     experiment_id, experiment = generate_experiment(
         trainable_class, variant_spec, example_args)

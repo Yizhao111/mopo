@@ -130,10 +130,10 @@ class MOPO(RLAlgorithm):
         self._static_fns = static_fns
 
         # TODO: re define the fake env
-        self.fake_env = FakeEnv(self._model, self._static_fns, penalty_coeff=penalty_coeff,
-                                penalty_learned_var=penalty_learned_var)
-        # self.fake_env = FakeEnv_SSM(self._model, self._ssm, self._static_fns, penalty_coeff=penalty_coeff,
+        # self.fake_env = FakeEnv(self._model, self._static_fns, penalty_coeff=penalty_coeff,
         #                         penalty_learned_var=penalty_learned_var)
+        self.fake_env = FakeEnv_SSM(self._model, self._ssm, self._static_fns, penalty_coeff=penalty_coeff,
+                                penalty_learned_var=penalty_learned_var)
 
         self._rollout_schedule = [20, 100, rollout_length, rollout_length]
         self._max_model_t = max_model_t
@@ -192,6 +192,7 @@ class MOPO(RLAlgorithm):
         #### load replay pool data
         self._pool_load_path = pool_load_path
         self._pool_load_max_size = pool_load_max_size
+        print('==================== pool size ================', self._pool_load_max_size)
         # get data from d4rl dataset
         loader.restore_pool(self._pool, self._pool_load_path, self._pool_load_max_size, save_path=self._log_dir)
         self._init_pool_size = self._pool.size
@@ -262,7 +263,7 @@ class MOPO(RLAlgorithm):
         gt.stamp('epoch_train_model')
         #### 
 
-        # train _n_ecochs(1000) epoch, and in each epoch, train _epoch_length(1000) sac, and every _model_train_freq do rollout
+        # train _n_epochs(1000) epoch, and in each epoch, train _epoch_length(1000) sac, and every _model_train_freq do rollout
         for self._epoch in gt.timed_for(range(self._epoch, self._n_epochs)):
 
             self._epoch_before_hook()

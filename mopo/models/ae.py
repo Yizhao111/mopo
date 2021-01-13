@@ -76,8 +76,8 @@ class AE:
     def loss(self):
         with tf.variable_scope('loss'):
             # self.loss = tf.reduce_mean(tf.squared_difference(self.pred, self.label), name='l2_loss')
-            loss = tf.nn.l2_loss(self.pred-self.label, name='l2_loss')
-            self.loss = tf.reduce_mean(loss)
+            self.loss = tf.nn.l2_loss(self.pred-self.label, name='l2_loss') # sum of t^2
+            # self.loss = tf.reduce_sum(loss)
 
     def optimize(self):
         # setup the optimizer, using Adam
